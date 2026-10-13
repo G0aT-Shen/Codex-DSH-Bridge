@@ -28,7 +28,7 @@ jobs:
         shell: pwsh
         run: |
           foreach ($attempt in 1..2) {
-            node --test test/storage.test.mjs test/bridge.test.mjs test/protocol.test.mjs
+            node --test test/storage.test.mjs test/shutdown.test.mjs test/bridge.test.mjs test/protocol.test.mjs
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 

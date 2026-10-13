@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  collectEvidence, commandOf, parseBridgeResult, renderDigest, resultMeta, reviewJob,
+  atomicJson, collectEvidence, commandOf, parseBridgeResult, renderDigest, resultMeta, reviewJob,
   submitTask, touchedFiles, validateTask, waitForJob, answerQuestion, repairJob, steerJob,
 } from '../protocol.js';
 import {makeFake, startFixture, tempRoot, until, pause} from './helpers.mjs';
@@ -114,10 +114,10 @@ test('submitTask dedupes ids and waitForJob returns on change', async t => {
   assert.deepEqual(await fs.readdir(path.join(root, 'inbox')), ['job-two.json']);
   await fs.mkdir(path.join(root, 'jobs', 'job-two'), {recursive: true});
 
-  await fs.writeFile(path.join(root, 'jobs', 'job-two', 'status.json'), JSON.stringify({id: 'job-two', state: 'running', attempt: 1}));
+  await atomicJson(path.join(root, 'jobs', 'job-two', 'status.json'), {id: 'job-two', state: 'running', attempt: 1});
   const pending = waitForJob(root, 'job-two', {timeoutMs: 500, intervalMs: 20});
   await pause(80);
-  await fs.writeFile(path.join(root, 'jobs', 'job-two', 'status.json'), JSON.stringify({id: 'job-two', state: 'completed', attempt: 1, steps: 3}));
+  await atomicJson(path.join(root, 'jobs', 'job-two', 'status.json'), {id: 'job-two', state: 'completed', attempt: 1, steps: 3});
   const result = await pending;
   assert.equal(result.changed, true);
   assert.equal(result.status.state, 'completed');
@@ -170,6 +170,8 @@ test('soft budget steers a wrap-up before the hard step limit', async t => {
         push('step/start', {turn: 1, step});
         push('assistant/message', {turn: 1, step, message: {content: [{type: 'text', text: `step ${step}`}]}});
         push('step/end', {turn: 1, step});
+        // Keep the soft-budget boundary observable even on a busy CI runner.
+        if (step === 8) await until(() => Promise.resolve(steers()), values => values.some(text => text.includes('预算提醒')));
         if (steers().some(text => text.includes('预算提醒'))) {
           push('assistant/message', {turn: 1, step, message: {content: [{type: 'text', text: '收尾\n```bridge-result\n{"outcome":"partial","summary":"预算内收尾","blockers":["未跑完整测试"],"changes":[],"verification":[]}\n```'}]}});
           return;
@@ -178,7 +180,7 @@ test('soft budget steers a wrap-up before the hard step limit', async t => {
       }
     },
   });
-  await submitTask(fixture.root, {id: 'budget', cwd: fixture.root, goal: 'g', plan: ['p'], acceptance: ['a'], maxSteps: 12, wrapUpSteps: 4, timeoutSeconds: 60}, fixture.config);
+  await submitTask(fixture.root, {id: 'budget', cwd: fixture.root, goal: 'g', plan: ['p'], acceptance: ['a'], maxSteps: 12, wrapUpSteps: 4, wrapUpSeconds: 0, timeoutSeconds: 60}, fixture.config);
   const status = await until(() => fixture.readStatus('budget'), s => ['completed', 'step_limit'].includes(s.state));
   assert.ok(fixture.fake.state.steers.length >= 1, 'expected a wrap-up steer');
   assert.match(fixture.fake.state.steers[0].text, /预算提醒/);
@@ -333,7 +335,7 @@ test('stale running job is interrupted and never replayed', async t => {
   const fake = makeFake();
   const {startBridge} = await import('../worker.js');
   const stop = await startBridge(fake.ctx, root, 20);
-  t.after(async () => { await stop().catch(() => {}); await pause(50); await fs.rm(root, {recursive: true, force: true}).catch(() => {}); });
+  t.after(async () => { await stop().catch(() => {}); await fs.rm(root, {recursive: true, force: true}).catch(() => {}); });
   const job = JSON.parse(await fs.readFile(path.join(root, 'jobs/old/status.json'), 'utf8'));
   assert.equal(job.state, 'interrupted');
   assert.equal(fake.state.created.length, 0);

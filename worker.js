@@ -31,6 +31,7 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
   await ensureToken(root);
 
   let stopped = false, scanning = false, timer;
+  let scanPromise = Promise.resolve(), stopPromise;
   const lockPath = path.join(root, 'worker.lock');
   // One worker per queue; a dead process lock may be reclaimed.
   try {
@@ -45,6 +46,14 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
   const active = new Map();       // jobId -> handle
   const handles = new Map();      // every live handle, for event routing
   const sessionIndex = new Map(); // sessionId -> jobId
+  const pendingWork = new Set();
+  const progressWrites = new Map();
+
+  function trackWork(promise) {
+    pendingWork.add(promise);
+    promise.then(() => pendingWork.delete(promise), () => pendingWork.delete(promise));
+    return promise;
+  }
 
   await recoverInterrupted();
 
@@ -124,13 +133,19 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
   async function tick() {
     if (stopped || scanning) return;
     scanning = true;
-    try {
-      await publishHealth();
-      await resumeSignalledJobs();
-      await retryBlockedJobs();
-      await startInboxJobs();
-    } catch (error) { ctx.logger.warn(`bridge scan: ${String(error)}`); }
-    finally { scanning = false; }
+    scanPromise = (async () => {
+      try {
+        await publishHealth();
+        if (stopped) return;
+        await resumeSignalledJobs();
+        if (stopped) return;
+        await retryBlockedJobs();
+        if (stopped) return;
+        await startInboxJobs();
+      } catch (error) { ctx.logger.warn(`bridge scan: ${String(error)}`); }
+      finally { scanning = false; }
+    })();
+    return scanPromise;
   }
 
   async function loadJob(id) {
@@ -142,6 +157,7 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
 
   async function resumeSignalledJobs() {
     for (const id of (await fs.readdir(path.join(root, 'jobs')).catch(() => [])).filter(validId)) {
+      if (stopped) return;
       if (active.has(id) || active.size >= config.maxConcurrent) continue;
       const { status, task } = await loadJob(id);
       if (!status || !task || ACTIVE_STATES.has(status.state) || !RESUMABLE_STATES.has(status.state)) continue;
@@ -154,11 +170,13 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
 
   async function retryBlockedJobs() {
     for (const id of (await fs.readdir(path.join(root, 'jobs')).catch(() => [])).filter(validId)) {
+      if (stopped) return;
       if (active.has(id) || active.size >= config.maxConcurrent) continue;
       const { status, task } = await loadJob(id);
       if (!status || !task) continue;
       if (!['blocked', 'queued'].includes(status.state)) continue;
-      if (!(task.dependsOn ?? []).length) continue;
+      // A shutdown can finish admission without dispatching a dependency-free job.
+      if (status.state !== 'queued' && !(task.dependsOn ?? []).length) continue;
       const dependency = await dependenciesSatisfied(task);
       if (!dependency.ok) {
         const nextState = dependency.blocked ? 'blocked' : (status.state === 'blocked' ? 'queued' : status.state);
@@ -177,10 +195,12 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
 
   async function startInboxJobs() {
     for (const file of (await fs.readdir(path.join(root, 'inbox')).catch(() => [])).sort()) {
+      if (stopped) return;
       if (active.size >= config.maxConcurrent) break;
       if (!file.endsWith('.json') || !validId(file.slice(0, -5))) continue;
       const input = path.join(root, 'inbox', file);
       if (!(await fs.lstat(input)).isFile()) continue;
+      if (stopped) return;
       let task;
       try {
         const stat = await fs.stat(input); if (stat.size > 262144) throw new Error('Task exceeds 256 KiB');
@@ -225,6 +245,7 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
 
   // ---------------------------------------------------------------- 任务句柄
   function startJob(task, status, signals) {
+    if (stopped) return;
     const handle = createHandle(task, status, signals);
     active.set(task.id, handle);
     handles.set(task.id, handle);
@@ -243,9 +264,15 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
 
   async function writeProgress(id, patch) {
     if (!validId(id)) return;
-    const file = path.join(jobDir(root, id), 'progress.json');
-    const current = await readJson(file, {}).catch(() => ({}));
-    await atomicJson(file, { ...current, ...patch, updatedAt: nowIso() }).catch(() => {});
+    // Finish each prior monitor write before publishing the final state.
+    const writing = (progressWrites.get(id) ?? Promise.resolve()).catch(() => {}).then(async () => {
+      const file = path.join(jobDir(root, id), 'progress.json');
+      const current = await readJson(file, {}).catch(() => ({}));
+      await atomicJson(file, { ...current, ...patch, updatedAt: nowIso() }).catch(() => {});
+    });
+    progressWrites.set(id, writing);
+    try { await writing; }
+    finally { if (progressWrites.get(id) === writing) progressWrites.delete(id); }
   }
 
   function createHandle(task, status, signals) {
@@ -547,20 +574,23 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
       handle.appendJournal({ t: nowIso(), k: 'budget', attempt: handle.attempt, kind: 'wrapup', note: `剩余 ${secondsLeft} 秒` });
       requestSteer(handle, `【预算提醒】时间预算即将用尽（剩余 ${secondsLeft} 秒）。立即停止新调查，把当前进展与验证结果写成最终交付（含 bridge-result 块）。`);
     }
-    drainSteers(handle, handle.agent).catch(error => ctx.logger.warn(`bridge steer ${handle.job.id}: ${String(error)}`));
+    trackWork(drainSteers(handle, handle.agent).then(() => handle.journalChain)).catch(error => ctx.logger.warn(`bridge steer ${handle.job.id}: ${String(error)}`));
     if (stepsLeft <= 0) handle.cancel('step_limit');
     if (elapsed > handle.task.timeoutSeconds * 1000) handle.cancel('timeout');
-    fs.access(path.join(handle.dir, 'cancel')).then(() => handle.cancel('cancelled'), () => {});
+    trackWork(fs.access(path.join(handle.dir, 'cancel')).then(() => {
+      handle.cancel('cancelled');
+      return handle.journalChain;
+    }, () => {}));
     if (Date.now() - (handle.lastProgressAt ?? 0) < 1000) return;
     handle.lastProgressAt = Date.now();
-    writeProgress(handle.job.id, {
+    trackWork(writeProgress(handle.job.id, {
       id: handle.job.id, state: 'running', attempt: handle.attempt, step: handle.steps, maxSteps: handle.task.maxSteps,
       stepsLeft: Math.max(0, stepsLeft), secondsLeft: Math.max(0, secondsLeft),
       phase: handle.wrapped.steps || handle.wrapped.time ? 'wrapping' : 'running',
       lastTool: handle.lastTool, lastToolAt: handle.lastToolAt ? new Date(handle.lastToolAt).toISOString() : null,
       sessionId: handle.sessionId, sessionMode: handle.job.sessionMode ?? null, steers: handle.steers,
       startedAt: new Date(startedAt).toISOString(), elapsedMs: elapsed,
-    }).catch(() => {});
+    })).catch(() => {});
   }
 
   async function drainSteers(handle, agent) {
@@ -606,6 +636,7 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
 
   // ---------------------------------------------------------------- 收尾
   async function finalize(handle, state, startedAt, error) {
+    if (state === 'plugin_unloaded') state = 'interrupted';
     const { task, dir } = handle;
     const durationMs = Date.now() - startedAt;
     const result = parseBridgeResult(handle.lastText, { state, task });
@@ -663,13 +694,23 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
   timer = setInterval(() => tick().catch(error => ctx.logger.warn(`bridge tick: ${String(error)}`)), pollMs);
   await tick();
 
-  return async () => {
+  return () => {
+    if (stopPromise) return stopPromise;
     stopped = true;
     clearInterval(timer);
-    for (const handle of active.values()) handle.cancel('plugin_unloaded');
-    offSessionEvent?.();
-    await atomicJson(path.join(root, 'health.json'), { version: BRIDGE_VERSION, stopped: true, updatedAt: nowIso() }).catch(() => {});
-    await fs.unlink(lockPath).catch(() => {});
+    const drainingHandles = [...active.values()];
+    for (const handle of drainingHandles) handle.cancel('plugin_unloaded');
+    stopPromise = (async () => {
+      // Retain ownership until scanning, task finalization and monitor I/O drain.
+      await scanPromise;
+      await Promise.allSettled(drainingHandles.map(handle => handle.promise));
+      while (pendingWork.size) await Promise.allSettled([...pendingWork]);
+      await Promise.allSettled(drainingHandles.map(handle => handle.journalChain));
+      offSessionEvent?.();
+      await atomicJson(path.join(root, 'health.json'), { version: BRIDGE_VERSION, stopped: true, updatedAt: nowIso() }).catch(() => {});
+      await fs.unlink(lockPath).catch(() => {});
+    })();
+    return stopPromise;
   };
 }
 

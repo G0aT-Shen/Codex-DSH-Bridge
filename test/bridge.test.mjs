@@ -33,7 +33,7 @@ function fakeCtx({hang=false}={}) {
 }
 async function fixture(t, options) {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'dsh-bridge-test-')); const f=fakeCtx(options);const stop=await startBridge(f.ctx,root,20);
-  t.after(async()=>{await stop();await pause(50);await fs.rm(root,{recursive:true,force:true});});
+  t.after(async()=>{await stop();await fs.rm(root,{recursive:true,force:true});});
   const task={id:'test-one',cwd:root,goal:'create artifact',plan:['create'],acceptance:['artifact exists']};
   const submit=()=>atomicJson(path.join(root,'inbox',task.id+'.json'),task);
   const status=()=>fs.readFile(path.join(root,'jobs',task.id,'status.json'),'utf8').then(JSON.parse);

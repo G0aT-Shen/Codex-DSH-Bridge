@@ -25,6 +25,8 @@ PowerShell 常见文件命令支持静态目标检测，包括字面数组路径
 
 状态 JSON 使用临时文件加原子替换。遇到 Windows 读文件或安全软件引起的短暂 `EPERM`、`EACCES`、`EBUSY`，最多重试六次，总退避等待 775ms；持续失败会抛出原始错误。重试期间保留旧文件，退出时尽力清理临时文件，不通过删除旧状态绕过文件占用。
 
+停止 worker 时先关闭新派工，再等待正在扫描的队列、执行收尾和后台文件写入，最后发布停止状态并释放锁。清理函数可重复调用；旧实例不能删除新实例的锁。尚未执行的 queued 任务留待重启接纳，运行中任务记为 interrupted，需显式 repair/resume。每个任务的进度写入按顺序执行，防止延迟的 running 快照覆盖最终 finished 状态。
+
 ## 验证层次
 
 | 检查 | 能证明什么 | 不覆盖什么 |
@@ -35,7 +37,7 @@ PowerShell 常见文件命令支持静态目标检测，包括字面数组路径
 | `verify-shared` | 当前桌面心跳、共享工具广告、两套技能实际加载 | 模型执行、学校 API 请求、端到端任务 |
 | live smoke 与主审 | 本次实际任务产物、所采集证据与独立验收 | 所有副作用、完整 OS 沙箱、其他版本宿主 |
 
-本次本地发布核查在 macOS / Node 24.21.0 运行，79 项测试通过；JavaScript 语法、JSON、文档链接与两套技能结构已核对。跨平台 CI 是否通过，以 [对应提交的实际 Actions 结果](https://github.com/G0aT-Shen/Codex-DSH-Bridge/actions/workflows/ci.yml) 为准，不用历史结果证明新提交。
+本次本地发布核查在 macOS / Node 24.21.0 运行，84 项测试通过；JavaScript 语法、JSON、文档链接与两套技能结构已核对。跨平台 CI 是否通过，以 [对应提交的实际 Actions 结果](https://github.com/G0aT-Shen/Codex-DSH-Bridge/actions/workflows/ci.yml) 为准，不用历史结果证明新提交。
 
 本次还通过专职联络子智能体监督桌面 DSH 完成只读发布审查，由主智能体独立核对可操作发现。该审查不替代测试；现场一次 steer 入队后未送达，journal 记录 AbortSignal 接口错误。发布源码为初始 prompt 与 steer 都传入 signal，fake host 回归检查成功；本次未重部署活动桌面插件，因此不声称现场纠偏已修复。
 

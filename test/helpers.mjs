@@ -37,7 +37,6 @@ export async function startFixture(t, { script, config, forkSupported, pollMs = 
   const stop = await startBridge(fake.ctx, root, pollMs);
   t.after(async () => {
     await stop().catch(() => {});
-    await pause(60);
     await fs.rm(root, { recursive: true, force: true }).catch(() => {});
   });
   const readStatus = id => fs.readFile(path.join(root, 'jobs', id, 'status.json'), 'utf8').then(JSON.parse);
