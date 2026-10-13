@@ -102,7 +102,9 @@ export async function startBridge(ctx, root = DEFAULT_ROOT, pollMsOverride = und
       const status = await readJson(path.join(jobDir(root, id), 'status.json'), null).catch(() => null);
       if (!status) continue;
       if (status.state === 'needs_input') waitingInput.push({ id, questions: status.questions ?? [] });
-      if (status.state === 'queued') queued++;
+      // Admission reserves an active slot before async startup persists "running".
+      // Avoid counting that same job as queued while the disk state catches up.
+      if (status.state === 'queued' && !active.has(id)) queued++;
       if (status.state === 'blocked') blocked++;
     }
     await atomicJson(path.join(root, 'health.json'), {

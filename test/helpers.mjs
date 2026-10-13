@@ -15,7 +15,8 @@ export async function until(read, predicate, { tries = 250, interval = 20 } = {}
     } catch { /* keep polling */ }
     await pause(interval);
   }
-  throw new Error(`Timed out; last value: ${JSON.stringify(last)?.slice(0, 400)}`);
+  const diagnostic = last?.error ? { error: last.error, ...last } : last;
+  throw new Error(`Timed out; last value: ${JSON.stringify(diagnostic)?.slice(0, 2000)}`);
 }
 
 export async function tempRoot(t, prefix = 'dsh-bridge-') {

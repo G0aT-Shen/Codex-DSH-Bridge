@@ -280,6 +280,11 @@ test('dependsOn gates on acceptance and blocks on failed dependencies', async t 
 });
 
 test('maxConcurrent runs slots in parallel and health reports them', async t => {
+  const mkdir = fs.mkdir;
+  t.mock.method(fs, 'mkdir', async (directory, ...args) => {
+    if (String(directory).endsWith(path.join('attempts', '1'))) await pause(150);
+    return mkdir(directory, ...args);
+  });
   const fixture = await startFixture(t, {
     config: {maxConcurrent: 2},
     script: async ({push, sleep, stopRequested}) => {
@@ -299,7 +304,7 @@ test('maxConcurrent runs slots in parallel and health reports them', async t => 
   assert.equal(health.activeTasks.length, 2);
   assert.equal(health.queued, 1, 'third task must stay queued in the inbox');
   assert.deepEqual(health.queuedIds, ['par-3']);
-  const statuses = await Promise.all(['par-1', 'par-2'].map(id => fixture.readStatus(id)));
+  const statuses = await until(() => Promise.all(['par-1', 'par-2'].map(id => fixture.readStatus(id))), all => all.every(s => s.state === 'running'));
   assert.deepEqual(statuses.map(s => s.state), ['running', 'running']);
   for (const id of ['par-1', 'par-2']) await fs.writeFile(path.join(fixture.root, 'jobs', id, 'cancel'), 'test');
   await until(async () => Promise.all(['par-1', 'par-2'].map(id => fixture.readStatus(id))), all => all.every(s => s.state === 'cancelled'));
@@ -347,7 +352,7 @@ test('real harness payload shape: tool/result carries message.toolCallId', () =>
 test('paths are canonicalized so symlinked temp dirs (/var → /private/var) do not break writeScope', async t => {
   const root = await tempRoot(t);
   const real = canonicalPathSync(root);
-  assert.ok(real.startsWith('/private/var') || real.startsWith('/private/tmp') || real === root, `unexpected canonical path ${real}`);
+  assert.equal(real, await fs.realpath(root), `unexpected canonical path ${real}`);
 
   // scope 用未解析的 /var 形式、目标用解析后的形式（真机上真实出现过的组合）
   assert.equal(writeScopeAllows([root], path.join(real, 'a.txt')), true);
@@ -401,7 +406,7 @@ test('PowerShell write targets preserve Windows paths and named destinations', a
   assert.deepEqual(powershellWriteTargets('Get-Content ../outside; Get-ChildItem ../outside'), []);
   assert.deepEqual(powershellWriteTargets('Write-Output "hello" > "out file.txt"'), ['out file.txt']);
   assert.deepEqual(powershellWriteTargets("Set-Content -Path 'allowed/in.txt', '../outside.txt' -Value hi"), ['allowed/in.txt', '../outside.txt']);
-  assert.deepEqual(powershellWriteTargets('New-Item -Name ../outside.txt -ItemType File'), ['../outside.txt']);
+  assert.deepEqual(powershellWriteTargets('New-Item -Name ../outside.txt -ItemType File'), [path.normalize('../outside.txt')]);
   assert.deepEqual(powershellWriteTargets("Set-Content -Path 'out,comma.txt' -Value hi"), ['out,comma.txt']);
 });
 
