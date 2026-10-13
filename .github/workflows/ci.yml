@@ -23,6 +23,14 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm test
+      - name: Repeat Windows file replacement and task lifecycle checks
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($attempt in 1..2) {
+            node --test test/storage.test.mjs test/bridge.test.mjs test/protocol.test.mjs
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
 # These are isolated tests with a fake DSH host. They do not install or start
 # either desktop application, access an account, or invoke a model.

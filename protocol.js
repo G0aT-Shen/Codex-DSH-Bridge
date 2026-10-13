@@ -100,9 +100,23 @@ export const AUTHORIZATION_KEYS = ['network', 'install', 'commit', 'push', 'publ
 
 export async function atomicJson(file, value) {
   const temp = `${file}.${randomUUID()}.tmp`;
-  await fs.writeFile(temp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
-  await fs.rename(temp, file);
-  return value;
+  const retryDelays = [25, 50, 100, 200, 200, 200];
+  try {
+    await fs.writeFile(temp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await fs.rename(temp, file);
+        return value;
+      } catch (error) {
+        // Windows readers or antivirus can briefly prevent replacement. Keep
+        // the destination intact; six retries use 775ms of total backoff.
+        if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= retryDelays.length) throw error;
+        await sleep(retryDelays[attempt]);
+      }
+    }
+  } finally {
+    await fs.rm(temp, { force: true }).catch(() => {});
+  }
 }
 
 export async function readJson(file, fallback = undefined) {

@@ -23,17 +23,19 @@ CLI、MCP 和 HTTP 派工接口复用命令实现。任务通过文件队列原�
 
 PowerShell 常见文件命令支持静态目标检测，包括字面数组路径；动态变量、通配符、表达式、脚本块及未知工具不保证覆盖。Windows 设备名不用于 job ID 或共享笔记 key。JSON 接受 UTF-8 BOM，复杂回包可从 `--file` 读取；时区默认使用系统 IANA 设置。Windows 队列使用支持硬链接的本地 NTFS，目录隐私依赖实际 ACL。
 
+状态 JSON 使用临时文件加原子替换。遇到 Windows 读文件或安全软件引起的短暂 `EPERM`、`EACCES`、`EBUSY`，最多重试六次，总退避等待 775ms；持续失败会抛出原始错误。重试期间保留旧文件，退出时尽力清理临时文件，不通过删除旧状态绕过文件占用。
+
 ## 验证层次
 
 | 检查 | 能证明什么 | 不覆盖什么 |
 | --- | --- | --- |
 | `npm ci --ignore-scripts` | 锁文件与安装器依赖可复现 | 桌面宿主插件是否存在 |
 | `npm test` | fake DSH 下的队列、返工、依赖、请求、协议、路径与隔离安装 fixture | 真实应用、模型、账号与宿主版本兼容 |
-| GitHub Actions | Ubuntu/macOS/Windows，各 Node 22 与 24 的上述检查 | Windows PC 的真实 DSH 联动 |
+| GitHub Actions | Ubuntu/macOS/Windows，各 Node 22 与 24 的上述检查；Windows 额外复测两轮存储与生命周期 | Windows PC 的真实 DSH 联动 |
 | `verify-shared` | 当前桌面心跳、共享工具广告、两套技能实际加载 | 模型执行、学校 API 请求、端到端任务 |
 | live smoke 与主审 | 本次实际任务产物、所采集证据与独立验收 | 所有副作用、完整 OS 沙箱、其他版本宿主 |
 
-本次本地发布核查在 macOS / Node 24.21.0 运行，76 项测试通过；JavaScript 语法、JSON、文档链接与两套技能结构已核对。跨平台 CI 是否通过，以 [对应提交的实际 Actions 结果](https://github.com/G0aT-Shen/Codex-DSH-Bridge/actions/workflows/ci.yml) 为准，不用历史结果证明新提交。
+本次本地发布核查在 macOS / Node 24.21.0 运行，79 项测试通过；JavaScript 语法、JSON、文档链接与两套技能结构已核对。跨平台 CI 是否通过，以 [对应提交的实际 Actions 结果](https://github.com/G0aT-Shen/Codex-DSH-Bridge/actions/workflows/ci.yml) 为准，不用历史结果证明新提交。
 
 本次还通过专职联络子智能体监督桌面 DSH 完成只读发布审查，由主智能体独立核对可操作发现。该审查不替代测试；现场一次 steer 入队后未送达，journal 记录 AbortSignal 接口错误。发布源码为初始 prompt 与 steer 都传入 signal，fake host 回归检查成功；本次未重部署活动桌面插件，因此不声称现场纠偏已修复。
 
