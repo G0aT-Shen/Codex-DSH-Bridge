@@ -1,0 +1,39 @@
+{
+  "name": "@hanyangshen/codex-bridge",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local desktop bridge for Codex coordination, DSH execution, shared skills, capability requests and independent review",
+  "exports": {
+    ".": "./boot.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "install:bridge": "node scripts/install-shared.mjs",
+    "install:skills": "node scripts/install-skills.mjs",
+    "verify:live": "node scripts/verify-shared.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT",
+  "author": "G0aT-Shen",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/G0aT-Shen/Codex-DSH-Bridge.git"
+  },
+  "homepage": "https://github.com/G0aT-Shen/Codex-DSH-Bridge#readme",
+  "bugs": {
+    "url": "https://github.com/G0aT-Shen/Codex-DSH-Bridge/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  }
+}

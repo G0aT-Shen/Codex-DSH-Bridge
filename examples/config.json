@@ -1,0 +1,9 @@
+{
+  "maxConcurrent": 1,
+  "pollMs": 500,
+  "defaultMaxSteps": 40,
+  "defaultTimeoutSeconds": 1800,
+  "wrapUpSteps": 8,
+  "wrapUpSeconds": 120,
+  "httpApi": true
+}

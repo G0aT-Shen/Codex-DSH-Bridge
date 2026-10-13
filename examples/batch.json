@@ -1,0 +1,21 @@
+[
+  {
+    "id": "replace-audit-task-id",
+    "goal": "Inspect the selected project and report the exact defect and proposed verification",
+    "cwd": "/absolute/path/to/your/project",
+    "plan": ["Reproduce the reported symptom", "Identify its cause and a minimal fix"],
+    "acceptance": ["The report includes reproducible evidence"],
+    "boundaries": "Read-only inspection; no network, credentials or Git mutations."
+  },
+  {
+    "id": "replace-fix-task-id",
+    "goal": "Implement the coordinator-approved fix and verify the regression",
+    "cwd": "/absolute/path/to/your/project",
+    "plan": ["Implement the agreed fix", "Run the relevant checks"],
+    "acceptance": ["The original symptom is resolved", "Relevant existing checks pass"],
+    "boundaries": "Only modify the named source and regression tests. Do not install, commit, push, publish or delete unrelated files.",
+    "dependsOn": ["replace-audit-task-id"],
+    "dependencyPolicy": "accepted",
+    "writeScope": ["src", "test"]
+  }
+]

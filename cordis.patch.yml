@@ -1,0 +1,4 @@
+- insert:
+    - id: codex-task-bridge
+      name: '@hanyangshen/codex-bridge'
+      config: {}

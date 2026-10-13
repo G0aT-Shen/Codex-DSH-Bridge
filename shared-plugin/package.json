@@ -1,0 +1,20 @@
+{
+  "name": "@hanyangshen/codex-shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./boot.js",
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "author": "G0aT-Shen",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/G0aT-Shen/Codex-DSH-Bridge.git",
+    "directory": "shared-plugin"
+  }
+}

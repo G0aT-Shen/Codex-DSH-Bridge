@@ -1,0 +1,63 @@
+# Dependencies and generated test/build output
+node_modules/
+coverage/
+.nyc_output/
+test-results/
+dist/
+*.log
+*.tsbuildinfo
+
+# Local environment, authentication and profile backups
+.env
+.env.*
+!.env.example
+auth.json
+credentials.json
+token
+token.*
+*.pem
+*.key
+*.codex-shared-backup-*
+*.codex-bridge-backup-*
+*.codex-skills-backup-*
+*.tmp
+
+# Runtime queue, shared notes and user sessions are local data
+/queue/
+/inbox/
+/jobs/
+/shared/memory/
+/shared/requests/
+/shared/host.json
+/health.json
+/http.json
+/config.json
+/worker.lock
+/guard.json
+/.dsh/
+/sessions/
+/rollouts/
+
+# Machine-specific acceptance and live smoke output
+/verification/*.json
+/verification/*.txt
+/smoke/*/
+
+# Proprietary application extracts and local protocol inventories
+/investigation/
+*.asar
+*.app/
+*.dmg
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+._*
+.idea/
+.vscode/
+__pycache__/
+*.pyc

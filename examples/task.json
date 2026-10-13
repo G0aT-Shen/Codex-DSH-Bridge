@@ -1,0 +1,21 @@
+{
+  "id": "replace-with-unique-task-id",
+  "goal": "Read package.json and report its name and version without modifying files",
+  "cwd": "/absolute/path/to/your/project",
+  "plan": ["Read package.json", "Return exact values and source evidence"],
+  "acceptance": ["The report identifies the real package name and version", "No project files are changed"],
+  "boundaries": "Read-only task. Do not write files, access credentials, use the network or commit changes.",
+  "maxSteps": 12,
+  "timeoutSeconds": 300,
+  "wrapUpSteps": 3,
+  "wrapUpSeconds": 60,
+  "authorization": {
+    "network": false,
+    "install": false,
+    "commit": false,
+    "push": false,
+    "publish": false,
+    "delete": false,
+    "credentials": false
+  }
+}
